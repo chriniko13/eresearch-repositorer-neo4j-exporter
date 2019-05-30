@@ -7,4 +7,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface AuthorRepository extends Neo4jRepository<Author, String> {
 
+    Author findByFirstnameEqualsAndInitialsEqualsAndSurnameEquals(String firstname, String initials, String surname);
 }

@@ -6,4 +6,6 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface EntryRepository extends Neo4jRepository<Entry, String> {
+
+    Entry findByTitleEquals(String title);
 }

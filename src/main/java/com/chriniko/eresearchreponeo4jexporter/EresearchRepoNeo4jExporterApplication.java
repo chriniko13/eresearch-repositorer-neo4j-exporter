@@ -28,7 +28,6 @@ public class EresearchRepoNeo4jExporterApplication implements CommandLineRunner 
     public void run(String... args) throws Exception {
 
         List<Entry> allEntries = recordService.findAllEntries();
-
         System.out.println(allEntries.size());
 
         transformerService.etl();
