@@ -81,5 +81,3 @@ return  count (e.title);
 match (a:Author)
 return  (a.fullname);
 ```
-
-![](sample1.pdf)
