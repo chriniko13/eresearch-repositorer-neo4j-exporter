@@ -6,6 +6,7 @@ public class ProcessingException extends RuntimeException {
         super(s);
     }
 
-    public ProcessingException() {
+    public ProcessingException(Throwable e) {
+        super(e);
     }
 }

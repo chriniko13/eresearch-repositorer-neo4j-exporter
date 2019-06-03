@@ -22,9 +22,7 @@ public class Author {
     @Id
     private String id;
 
-    private String firstname;
-    private String initials;
-    private String surname;
+    private String fullname;
 
     @Relationship(type = "PARTICIPATED", direction = "OUTGOING")
     private List<Entry> participated = new ArrayList<>();
