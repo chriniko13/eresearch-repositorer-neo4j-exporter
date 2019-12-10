@@ -226,14 +226,12 @@ public class RecordRepository implements EresearchRepositorerRepository<Record, 
                                                      boolean fullFetch) {
 
         for (GridFSFile gridFSDBFile : gridFSDBFiles) {
-
             String filename = gridFSDBFile.getFilename();
 
             RetrievedRecordDto retrievedRecordDto = new RetrievedRecordDto();
             retrievedRecordDto.setFilename(filename);
 
             if (fullFetch) {
-
                 GridFSDownloadStream gridFSDownloadStream = gridFSBucket.openDownloadStream(gridFSDBFile.getObjectId());
                 GridFsResource gridFsResource = new GridFsResource(gridFSDBFile, gridFSDownloadStream);
 
@@ -244,7 +242,6 @@ public class RecordRepository implements EresearchRepositorerRepository<Record, 
                     throw new ProcessingException("could not obtain grid fs resource input stream");
                 }
             }
-
             retrievedRecordDtos.add(retrievedRecordDto);
         }
     }

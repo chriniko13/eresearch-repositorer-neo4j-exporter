@@ -14,10 +14,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -25,7 +22,7 @@ import java.util.function.Consumer;
 @Service
 public class TransformerService {
 
-    private static final boolean SINGLE_THREAD = false;
+    private static final boolean SINGLE_THREAD = true;
 
     private static final int BATCH_SIZE = 25;
 
@@ -60,13 +57,17 @@ public class TransformerService {
 
 
         List<Entry> allEntries = recordService.findAllEntries();
-        //TODO allEntries size...
+        log.info("allEntries size : " + allEntries.size());
+
         List<List<Entry>> splittedWork = partitioner.process(allEntries, BATCH_SIZE);
-        //TODO splittedWork size...
+        int totalRecords = splittedWork.stream().map(List::size).reduce(0, Integer::sum);
+        log.info("splittedWork size : " + splittedWork.size() + ", totalRecords: " + totalRecords);
+
 
         log.info("total steps to execute: {}", splittedWork.size());
 
-        if (SINGLE_THREAD) { //TODO check if works as expected...
+        if (SINGLE_THREAD) {
+            log.info("single thread approach");
 
             int currentStep = 1;
 
@@ -83,7 +84,13 @@ public class TransformerService {
                 currentStep++;
             }
 
-        } else { //TODO check if works as expected...
+        } else {
+            log.info("multi thread approach");
+
+            //TODO use them in order to apply atomicity...
+            final ConcurrentHashMap<String, Semaphore> semaphoresByEntryTitle = new ConcurrentHashMap<>();
+            final ConcurrentHashMap<String, Semaphore> semaphoresByAuthorName = new ConcurrentHashMap<>();
+
 
             final CountDownLatch countDownLatch = new CountDownLatch(splittedWork.size());
             final AtomicInteger currentStep = new AtomicInteger(1);
@@ -93,16 +100,16 @@ public class TransformerService {
                 CompletableFuture.runAsync(() -> {
 
                     long startTime = System.nanoTime();
-                    log.info("executing step: {}", currentStep.get());
+                    log.info("executing step: {}, entries size: {}", currentStep.get(), entries.size());
 
                     txTemplate(session, this::process, entries);
-                    countDownLatch.countDown();
 
                     long totalTime = System.nanoTime() - startTime;
                     long totalTimeInMs = TimeUnit.MILLISECONDS.convert(totalTime, TimeUnit.NANOSECONDS);
                     log.info("total time to execute step: {} is {} ms", currentStep, totalTimeInMs);
                     currentStep.incrementAndGet();
 
+                    countDownLatch.countDown();
 
                 }, ioWorkers);
 
@@ -124,7 +131,7 @@ public class TransformerService {
     }
 
     private <R> void txTemplate(Session session, Consumer<List<R>> recordsConsumer, List<R> records) {
-        Transaction tx = session.beginTransaction();
+        Transaction tx = session.beginTransaction(Transaction.Type.READ_WRITE);
         try {
             recordsConsumer.accept(records);
             tx.commit();
@@ -159,8 +166,8 @@ public class TransformerService {
             return;
         }
 
-        com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry entryByTitleResult = entryRepository.findByTitleEquals(title);
-
+        com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry entryByTitleResult;
+        entryByTitleResult = entryRepository.findByTitleEquals(title);
         if (entryByTitleResult == null) {
             com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry entryToSave = new com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry();
             entryToSave.setId(UUID.randomUUID().toString());
@@ -168,22 +175,22 @@ public class TransformerService {
             entryByTitleResult = entryRepository.save(entryToSave);
         }
 
+
         final List<com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author> authorsSaved = new ArrayList<>(entry.getAuthors().size());
 
         for (Author author : entry.getAuthors()) {
 
             String fullName = Author.fullname(author);
 
-            com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author authorByNameResult
-                    = authorRepository.findByFullnameEquals(fullName);
-
+            com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author authorByNameResult;
+            authorByNameResult = authorRepository.findByFullnameEquals(fullName);
             if (authorByNameResult == null) {
-
                 com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author authorToSave = new com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author();
                 authorToSave.setId(UUID.randomUUID().toString());
                 authorToSave.setFullname(fullName);
                 authorByNameResult = authorRepository.save(authorToSave);
             }
+
 
             authorByNameResult.getParticipated().add(entryByTitleResult);
             authorByNameResult = authorRepository.save(authorByNameResult);

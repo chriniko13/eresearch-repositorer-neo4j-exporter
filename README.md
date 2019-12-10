@@ -1,7 +1,9 @@
 ### ERESEARCH REPOSITORER NEO4J EXPORTER
 
 #### Description
-UNDER CONSTRUCTION
+
+This service transforms [eresearch-repositorer-platform](https://github.com/chriniko13/eresearch-repositorer-platform) mongo database to neo4j graph database,
+in order to focus on relations of extracted authors.
 
 
 #### Dependencies
@@ -21,6 +23,39 @@ UNDER CONSTRUCTION
     ```
     
 * For more info see: `https://neo4j.com/developer/docker-run-neo4j/`
+
+
+#### Build
+TODO
+
+
+#### Run
+TODO
+
+
+#### Perform a backup
+* Enter in docker container with bash: `docker exec -it testneo4j bash`
+
+* Then: `cd data/databases`
+
+* Then: `tar -zcf graph.db.tar.gz graph.db/`
+
+* Then: `docker cp <containerId>:/file/path/within/container /host/path/target`
+
+* Then: go back to host terminal and execute: `docker cp testneo4j:/var/lib/neo4j/data/databases/graph.db.tar.gz .`
+
+
+#### Restore a backup
+* Enter in docker container with bash: `docker exec -it testneo4j bash`
+
+* Then: `cd data/databases`
+
+* Then: `rm -rf graph.db`
+
+* Then: copy the back up from host (graph.db.tar.gz file in this directory) to docker container: `docker cp graph.db.tar.gz testneo4j:/var/lib/neo4j/data/databases`
+
+* Then inside docker container where you copied the tar file, untar it with the command: `tar -zxf graph.db.tar.gz`
+
 
 
 #### Sample Queries
@@ -81,3 +116,7 @@ return  count (e.title);
 match (a:Author)
 return  (a.fullname);
 ```
+
+#### Icons Sample
+![](sample1.pdf)
+
