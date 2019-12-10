@@ -118,5 +118,5 @@ return  (a.fullname);
 ```
 
 #### Icons Sample
-![](sample1.pdf)
+![](shortestPathPres.png)
 
