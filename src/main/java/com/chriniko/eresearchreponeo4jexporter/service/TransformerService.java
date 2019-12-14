@@ -47,7 +47,7 @@ public class TransformerService {
         this.partitioner = partitioner;
 
         this.titlesToSkip = new LinkedHashSet<>();
-        this.titlesToSkip.add("home page");
+        this.titlesToSkip.add("home page"); // Note: not necessary info from DBLP.
         this.ioWorkers = ioWorkers;
     }
 
@@ -87,12 +87,12 @@ public class TransformerService {
         } else {
             log.info("multi thread approach");
 
-            //TODO use them in order to apply atomicity...
             final ConcurrentHashMap<String, Semaphore> semaphoresByEntryTitle = new ConcurrentHashMap<>();
             final ConcurrentHashMap<String, Semaphore> semaphoresByAuthorName = new ConcurrentHashMap<>();
 
 
             final CountDownLatch countDownLatch = new CountDownLatch(splittedWork.size());
+
             final AtomicInteger currentStep = new AtomicInteger(1);
 
             for (List<Entry> entries : splittedWork) {
@@ -102,7 +102,7 @@ public class TransformerService {
                     long startTime = System.nanoTime();
                     log.info("executing step: {}, entries size: {}", currentStep.get(), entries.size());
 
-                    txTemplate(session, this::process, entries);
+                    txProcess(session, entries, semaphoresByEntryTitle, semaphoresByAuthorName);
 
                     long totalTime = System.nanoTime() - startTime;
                     long totalTimeInMs = TimeUnit.MILLISECONDS.convert(totalTime, TimeUnit.NANOSECONDS);
@@ -130,18 +130,6 @@ public class TransformerService {
 
     }
 
-    private <R> void txTemplate(Session session, Consumer<List<R>> recordsConsumer, List<R> records) {
-        Transaction tx = session.beginTransaction(Transaction.Type.READ_WRITE);
-        try {
-            recordsConsumer.accept(records);
-            tx.commit();
-        } catch (Exception error) {
-            tx.rollback();
-        } finally {
-            tx.close();
-        }
-    }
-
     private void clearEntries(Session session) {
         Transaction transaction = session.beginTransaction();
         try {
@@ -155,24 +143,71 @@ public class TransformerService {
         }
     }
 
-    private void process(List<Entry> entries) {
-        entries.forEach(this::process);
+    private <R> void txTemplate(Session session, Consumer<List<R>> recordsConsumer, List<R> records) {
+
+        Transaction tx = session.beginTransaction(Transaction.Type.READ_WRITE);
+        try {
+            recordsConsumer.accept(records);
+            tx.commit();
+        } catch (Exception error) {
+            tx.rollback();
+        } finally {
+            tx.close();
+        }
     }
 
-    private void process(Entry entry) {
-        String title = entry.getTitle().toLowerCase();
+    private void txProcess(Session session, List<Entry> records,
+                           ConcurrentHashMap<String, Semaphore> semaphoresByEntryTitle,
+                           ConcurrentHashMap<String, Semaphore> semaphoresByAuthorName) {
 
+        Transaction tx = session.beginTransaction(Transaction.Type.READ_WRITE);
+        try {
+            process(records, semaphoresByEntryTitle, semaphoresByAuthorName);
+            tx.commit();
+        } catch (Exception error) {
+            tx.rollback();
+        } finally {
+            tx.close();
+        }
+    }
+
+
+    private void process(List<Entry> entries,
+                         ConcurrentHashMap<String, Semaphore> semaphoresByEntryTitle,
+                         ConcurrentHashMap<String, Semaphore> semaphoresByAuthorName) {
+        entries.forEach(entry -> process(entry, semaphoresByEntryTitle, semaphoresByAuthorName));
+    }
+
+    private void process(Entry entry,
+                         ConcurrentHashMap<String, Semaphore> semaphoresByEntryTitle,
+                         ConcurrentHashMap<String, Semaphore> semaphoresByAuthorName) {
+
+        String title = entry.getTitle().toLowerCase();
         if (titlesToSkip.contains(title)) {
             return;
         }
 
-        com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry entryByTitleResult;
-        entryByTitleResult = entryRepository.findByTitleEquals(title);
-        if (entryByTitleResult == null) {
-            com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry entryToSave = new com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry();
-            entryToSave.setId(UUID.randomUUID().toString());
-            entryToSave.setTitle(entry.getTitle().toLowerCase());
-            entryByTitleResult = entryRepository.save(entryToSave);
+
+        String titleToGetSemaphore = title.trim().toLowerCase();
+        Semaphore titleSemaphore = semaphoresByEntryTitle.compute(titleToGetSemaphore, (k, v) -> {
+            if (v == null) {
+                v = new Semaphore(1);
+            }
+            return v;
+        });
+
+        // Note: create entry if not exists.
+        com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry entryByTitleResult = null;
+        try {
+            titleSemaphore.acquire();
+            entryByTitleResult = createEntryIfNotExists(entry, title);
+        } catch (InterruptedException e) {
+            if (!Thread.currentThread().isInterrupted()) {
+                Thread.currentThread().interrupt();
+            }
+            throw new CancellationException("interrupted");
+        } finally {
+            titleSemaphore.release();
         }
 
 
@@ -182,14 +217,61 @@ public class TransformerService {
 
             String fullName = Author.fullname(author);
 
-            com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author authorByNameResult;
-            authorByNameResult = authorRepository.findByFullnameEquals(fullName);
-            if (authorByNameResult == null) {
-                com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author authorToSave = new com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author();
-                authorToSave.setId(UUID.randomUUID().toString());
-                authorToSave.setFullname(fullName);
-                authorByNameResult = authorRepository.save(authorToSave);
+            String authorFullnameToGetSemaphore = fullName.trim().toLowerCase();
+            Semaphore authorSemaphore = semaphoresByAuthorName.compute(authorFullnameToGetSemaphore, (k, v) -> {
+                if (v == null) {
+                    v = new Semaphore(1);
+                }
+                return v;
+            });
+
+
+            // Note: create author if not exists.
+            com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author authorByNameResult = null;
+            try {
+                authorSemaphore.acquire();
+                authorByNameResult = createAuthorIfNotExists(fullName);
+            } catch (InterruptedException e) {
+                if (!Thread.currentThread().isInterrupted()) {
+                    Thread.currentThread().interrupt();
+                }
+                throw new CancellationException("interrupted");
+            } finally {
+                authorSemaphore.release();
             }
+
+
+            authorByNameResult.getParticipated().add(entryByTitleResult);
+            authorByNameResult = authorRepository.save(authorByNameResult);
+
+            authorsSaved.add(authorByNameResult);
+
+        }
+
+        entryByTitleResult.getAuthors().addAll(authorsSaved);
+        entryRepository.save(entryByTitleResult);
+    }
+
+    private void process(List<Entry> entries) {
+        entries.forEach(this::process);
+    }
+
+    private void process(Entry entry) {
+        String title = entry.getTitle().toLowerCase();
+        if (titlesToSkip.contains(title)) {
+            return;
+        }
+
+        com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry entryByTitleResult = createEntryIfNotExists(entry, title);
+
+
+        final List<com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author> authorsSaved = new ArrayList<>(entry.getAuthors().size());
+
+        for (Author author : entry.getAuthors()) {
+
+            String fullName = Author.fullname(author);
+
+            com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author authorByNameResult = createAuthorIfNotExists(fullName);
 
 
             authorByNameResult.getParticipated().add(entryByTitleResult);
@@ -200,6 +282,28 @@ public class TransformerService {
 
         entryByTitleResult.getAuthors().addAll(authorsSaved);
         entryRepository.save(entryByTitleResult);
+    }
+
+    private com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry createEntryIfNotExists(Entry entry, String title) {
+        com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry entryByTitleResult = entryRepository.findByTitleEquals(title);
+        if (entryByTitleResult == null) {
+            com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry entryToSave = new com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry();
+            entryToSave.setId(UUID.randomUUID().toString());
+            entryToSave.setTitle(entry.getTitle().toLowerCase());
+            entryByTitleResult = entryRepository.save(entryToSave);
+        }
+        return entryByTitleResult;
+    }
+
+    private com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author createAuthorIfNotExists(String fullName) {
+        com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author authorByNameResult = authorRepository.findByFullnameEquals(fullName);
+        if (authorByNameResult == null) {
+            com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author authorToSave = new com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author();
+            authorToSave.setId(UUID.randomUUID().toString());
+            authorToSave.setFullname(fullName);
+            authorByNameResult = authorRepository.save(authorToSave);
+        }
+        return authorByNameResult;
     }
 
 
