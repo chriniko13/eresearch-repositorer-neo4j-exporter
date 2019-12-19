@@ -43,9 +43,8 @@ Execute: `mvn clean install`
 
 * Then: `tar -zcf graph.db.tar.gz graph.db/`
 
-* Then: `docker cp <containerId>:/file/path/within/container /host/path/target`
-
-* Then: go back to host terminal and execute: `docker cp testneo4j:/var/lib/neo4j/data/databases/graph.db.tar.gz .`
+* Then: `docker cp <containerId>:/file/path/within/container /host/path/target`, so:
+    * go back to host terminal and execute: `docker cp testneo4j:/var/lib/neo4j/data/databases/graph.db.tar.gz .`
 
 
 #### Restore a backup
