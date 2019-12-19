@@ -19,7 +19,7 @@ in order to focus on relations of extracted authors.
         -v $HOME/neo4j/import:/var/lib/neo4j/import \
         -v $HOME/neo4j/plugins:/plugins \
         --env NEO4J_AUTH=neo4j/test \
-        neo4j:latest
+        neo4j:3.5.8
     ```
     
 * For more info see: `https://neo4j.com/developer/docker-run-neo4j/`
