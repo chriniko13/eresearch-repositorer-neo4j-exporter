@@ -26,11 +26,14 @@ in order to focus on relations of extracted authors.
 
 
 #### Build
-TODO
+Execute: `mvn clean install`
 
 
 #### Run
-TODO
+* First you need to have run the dependencies (neo4j instance) and having a running mongo instance 
+  of eresearch repositorer platform, for more details see: [eresearch repositorer platform](https://github.com/chriniko13/eresearch-repositorer-platform)
+
+* Build first and then execute: `java -jar target/eresearch-repo-neo4j-exporter-1.0.0-SNAPSHOT.jar`
 
 
 #### Perform a backup

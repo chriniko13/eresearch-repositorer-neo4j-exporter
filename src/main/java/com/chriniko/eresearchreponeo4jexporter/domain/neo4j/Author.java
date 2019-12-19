@@ -1,20 +1,19 @@
 package com.chriniko.eresearchreponeo4jexporter.domain.neo4j;
 
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-import lombok.ToString;
+import lombok.*;
 import org.neo4j.ogm.annotation.Id;
 import org.neo4j.ogm.annotation.NodeEntity;
 import org.neo4j.ogm.annotation.Relationship;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Getter
 @Setter
 @NoArgsConstructor
 @ToString
+
+@EqualsAndHashCode(of = {"id"})
 
 @NodeEntity
 public class Author {
@@ -25,6 +24,6 @@ public class Author {
     private String fullname;
 
     @Relationship(type = "PARTICIPATED", direction = "OUTGOING")
-    private List<Entry> participated = new ArrayList<>();
+    private Set<Entry> participated = new LinkedHashSet<>();
 
 }

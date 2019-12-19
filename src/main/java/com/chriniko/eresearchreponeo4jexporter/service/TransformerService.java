@@ -13,7 +13,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -22,7 +25,7 @@ import java.util.function.Consumer;
 @Service
 public class TransformerService {
 
-    private static final boolean SINGLE_THREAD = true;
+    private static final boolean SINGLE_THREAD = false;
 
     private static final int BATCH_SIZE = 25;
 
@@ -100,14 +103,13 @@ public class TransformerService {
                 CompletableFuture.runAsync(() -> {
 
                     long startTime = System.nanoTime();
-                    log.info("executing step: {}, entries size: {}", currentStep.get(), entries.size());
+                    log.info("executing step: {}, entries size: {}", currentStep.getAndIncrement(), entries.size());
 
                     txProcess(session, entries, semaphoresByEntryTitle, semaphoresByAuthorName);
 
                     long totalTime = System.nanoTime() - startTime;
                     long totalTimeInMs = TimeUnit.MILLISECONDS.convert(totalTime, TimeUnit.NANOSECONDS);
                     log.info("total time to execute step: {} is {} ms", currentStep, totalTimeInMs);
-                    currentStep.incrementAndGet();
 
                     countDownLatch.countDown();
 
@@ -211,8 +213,6 @@ public class TransformerService {
         }
 
 
-        final List<com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author> authorsSaved = new ArrayList<>(entry.getAuthors().size());
-
         for (Author author : entry.getAuthors()) {
 
             String fullName = Author.fullname(author);
@@ -241,14 +241,14 @@ public class TransformerService {
             }
 
 
-            authorByNameResult.getParticipated().add(entryByTitleResult);
-            authorByNameResult = authorRepository.save(authorByNameResult);
-
-            authorsSaved.add(authorByNameResult);
+            if (!authorByNameResult.getParticipated().contains(entryByTitleResult)) {
+                authorByNameResult.getParticipated().add(entryByTitleResult);
+                authorByNameResult = authorRepository.save(authorByNameResult);
+                entryByTitleResult.getAuthors().add(authorByNameResult);
+            }
 
         }
 
-        entryByTitleResult.getAuthors().addAll(authorsSaved);
         entryRepository.save(entryByTitleResult);
     }
 
@@ -265,8 +265,6 @@ public class TransformerService {
         com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Entry entryByTitleResult = createEntryIfNotExists(entry, title);
 
 
-        final List<com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author> authorsSaved = new ArrayList<>(entry.getAuthors().size());
-
         for (Author author : entry.getAuthors()) {
 
             String fullName = Author.fullname(author);
@@ -274,13 +272,14 @@ public class TransformerService {
             com.chriniko.eresearchreponeo4jexporter.domain.neo4j.Author authorByNameResult = createAuthorIfNotExists(fullName);
 
 
-            authorByNameResult.getParticipated().add(entryByTitleResult);
-            authorByNameResult = authorRepository.save(authorByNameResult);
+            if (!authorByNameResult.getParticipated().contains(entryByTitleResult)) {
+                authorByNameResult.getParticipated().add(entryByTitleResult);
+                authorByNameResult = authorRepository.save(authorByNameResult);
+                entryByTitleResult.getAuthors().add(authorByNameResult);
+            }
 
-            authorsSaved.add(authorByNameResult);
         }
 
-        entryByTitleResult.getAuthors().addAll(authorsSaved);
         entryRepository.save(entryByTitleResult);
     }
 
